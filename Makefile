@@ -7,6 +7,10 @@ WRKDIR = $(MDIR)/build
 .base:
 	if ! [ -e $(WRKDIR) ]; then mkdir $(WRKDIR) ; mkdir $(WRKDIR)/lib; fi;
 	touch build/.base
+	awk '/^[^#]/' "$(BBNFILE)" | awk 'NF == 3 {print $$1}' | xargs | sed -e 's/ /,/g' > ".__sBBN1.classfile"
+	awk '/^[^#]/' "$(BBNFILE)" | awk 'NF == 3 {print $$2}' | xargs | sed -e 's/ /,/g' > ".__sBBN2.classfile"
+	awk '/^[^#]/' "$(BBNFILE)" | awk 'NF == 3 {print $$3}' | xargs | sed -e 's/ /,/g' > ".__sBBN3.classfile"
+
 
 vpath %.c source:tools:main:test
 vpath %.o build
@@ -45,6 +49,7 @@ OMPFLAG   = -fopenmp
 # all other compilation flags
 CCFLAG = -g -fPIC
 LDFLAG = -g -fPIC
+BBNFILE = bbn/sBBN_2017.dat
 
 # leave blank to compile without HyRec, or put path to HyRec directory
 # (with no slash at the end: e.g. hyrec or ../hyrec)
@@ -58,7 +63,7 @@ HYREC = hyrec
 CCFLAG += -D__CLASSDIR__='"$(MDIR)"'
 
 # where to find include files *.h
-INCLUDES = -I../include
+INCLUDES = -I../include -I..
 
 # automatically add external programs if needed. First, initialize to blank.
 EXTERNAL =
