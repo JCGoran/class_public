@@ -2396,11 +2396,24 @@ int spectra_compute_cl(
   double factor;
   int index_q_spline=0;
 
+#ifdef HAVE_FORECAST_GAMMA
+  double *transfer_ic1_den = NULL;
+  double *transfer_ic1_rsd = NULL;
+  double *transfer_ic2_den = NULL;
+  double *transfer_ic2_rsd = NULL;
+  const double gamma = 0.55;
+#endif
   index_ic1_ic2 = index_symmetric_matrix(index_ic1,index_ic2,psp->ic_size[index_md]);
 
   if (ppt->has_cl_number_count == _TRUE_) {
     class_alloc(transfer_ic1_nc,psp->d_size*sizeof(double),psp->error_message);
     class_alloc(transfer_ic2_nc,psp->d_size*sizeof(double),psp->error_message);
+#ifdef HAVE_FORECAST_GAMMA
+    class_alloc(transfer_ic1_den,psp->d_size*sizeof(double),psp->error_message);
+    class_alloc(transfer_ic1_rsd,psp->d_size*sizeof(double),psp->error_message);
+    class_alloc(transfer_ic2_den,psp->d_size*sizeof(double),psp->error_message);
+    class_alloc(transfer_ic2_rsd,psp->d_size*sizeof(double),psp->error_message);
+#endif
   }
 
   for (index_q=0; index_q < ptr->q_size; index_q++) {
@@ -2471,6 +2484,10 @@ int spectra_compute_cl(
         if (ppt->has_nc_density == _TRUE_) {
           transfer_ic1_nc[index_d1] += transfer_ic1[ptr->index_tt_density+index_d1];
           transfer_ic2_nc[index_d1] += transfer_ic2[ptr->index_tt_density+index_d1];
+#ifdef HAVE_FORECAST_GAMMA
+          transfer_ic1_den[index_d1] = transfer_ic1[ptr->index_tt_density+index_d1];
+          transfer_ic2_den[index_d1] = transfer_ic2[ptr->index_tt_density+index_d1];
+#endif
         }
 
         if (ppt->has_nc_rsd     == _TRUE_) {
@@ -2482,6 +2499,10 @@ int spectra_compute_cl(
             += transfer_ic2[ptr->index_tt_rsd+index_d1]
             + transfer_ic2[ptr->index_tt_d0+index_d1]
             + transfer_ic2[ptr->index_tt_d1+index_d1];
+#ifdef HAVE_FORECAST_GAMMA
+          transfer_ic1_rsd[index_d1] = transfer_ic1[ptr->index_tt_rsd+index_d1];
+          transfer_ic2_rsd[index_d1] = transfer_ic2[ptr->index_tt_rsd+index_d1];
+#endif
         }
 
         if (ppt->has_nc_lens == _TRUE_) {
@@ -2605,16 +2626,73 @@ int spectra_compute_cl(
 
     if (_scalars_ && (psp->has_dd == _TRUE_)) {
       index_ct=0;
+#ifdef HAVE_FORECAST_GAMMA
+      double tau_temp1, tau_temp2;
+      double f1, f2;
+      int last_index1, last_index2;
+      double *pvecback1, *pvecback2;
+      class_alloc(pvecback1, pba->bg_size*sizeof(double), pba->error_message);
+      class_alloc(pvecback2, pba->bg_size*sizeof(double), pba->error_message);
+#endif
       for (index_d1=0; index_d1<psp->d_size; index_d1++) {
+#ifdef HAVE_FORECAST_GAMMA
+        /*
+        procedure:
+        - call background_tau_of_z() using ppt->selection_mean[index_dN] as the redshift to obtain tau
+        - call background_at_tau() with the above tau
+        - get f from the index_bg_f
+        */
+        /* get tau given some redshift */
+        class_call(background_tau_of_z(pba, ppt->selection_mean[index_d1], &tau_temp1),
+            pba->error_message,
+            pba->error_message
+        );
+        /* get all background quantities at a given tau */
+        class_call(background_at_tau(pba, tau_temp1, pba->long_info, pba->inter_normal, &last_index1, pvecback1),
+            pba->error_message,
+            pba->error_message
+        );
+        /* I guess this is how you access the growth rate? */
+        f1 = pvecback1[pba->index_bg_f];
+#endif
         for (index_d2=index_d1; index_d2<=MIN(index_d1+psp->non_diag,psp->d_size-1); index_d2++) {
+#ifdef HAVE_FORECAST_GAMMA
+          /* get tau given some redshift */
+          class_call(background_tau_of_z(pba, ppt->selection_mean[index_d2], &tau_temp2),
+              pba->error_message,
+              pba->error_message
+          );
+          /* get all background quantities at a given tau */
+          class_call(background_at_tau(pba, tau_temp2, pba->long_info, pba->inter_normal, &last_index2, pvecback2),
+              pba->error_message,
+              pba->error_message
+          );
+          /* I guess this is how you access the growth rate? */
+          f2 = pvecback2[pba->index_bg_f];
+
+          /* NOTE: this is where it computes the integrand of the TOTAL delta */
+          cl_integrand[index_q*cl_integrand_num_columns+1+psp->index_ct_dd+index_ct]=
+            primordial_pk[index_ic1_ic2]
+            * (
+                transfer_ic1_den[index_d1] * transfer_ic2_rsd[index_d2] * f2 / gamma
+               +transfer_ic2_den[index_d2] * transfer_ic1_rsd[index_d1] * f1 / gamma
+               +transfer_ic2_rsd[index_d2] * transfer_ic1_rsd[index_d1] * (f1 + f2) / gamma
+            ) * factor;
+#else
           cl_integrand[index_q*cl_integrand_num_columns+1+psp->index_ct_dd+index_ct]=
             primordial_pk[index_ic1_ic2]
             * transfer_ic1_nc[index_d1]
             * transfer_ic2_nc[index_d2]
             * factor;
+#endif
           index_ct++;
         }
       }
+#ifdef HAVE_FORECAST_GAMMA
+      /* free memory */
+      free(pvecback1);
+      free(pvecback2);
+#endif
     }
 
     if (_scalars_ && (psp->has_td == _TRUE_)) {
