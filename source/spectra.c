@@ -2396,7 +2396,7 @@ int spectra_compute_cl(
   double factor;
   int index_q_spline=0;
 
-#ifdef HAVE_FORECAST_GAMMA
+#if defined(HAVE_FORECAST_GAMMA) || defined(HAVE_FORECAST_BIAS)
   double *transfer_ic1_den = NULL;
   double *transfer_ic1_rsd = NULL;
   double *transfer_ic2_den = NULL;
@@ -2408,7 +2408,7 @@ int spectra_compute_cl(
   if (ppt->has_cl_number_count == _TRUE_) {
     class_alloc(transfer_ic1_nc,psp->d_size*sizeof(double),psp->error_message);
     class_alloc(transfer_ic2_nc,psp->d_size*sizeof(double),psp->error_message);
-#ifdef HAVE_FORECAST_GAMMA
+#if defined(HAVE_FORECAST_GAMMA) || defined(HAVE_FORECAST_BIAS)
     class_alloc(transfer_ic1_den,psp->d_size*sizeof(double),psp->error_message);
     class_alloc(transfer_ic1_rsd,psp->d_size*sizeof(double),psp->error_message);
     class_alloc(transfer_ic2_den,psp->d_size*sizeof(double),psp->error_message);
@@ -2484,7 +2484,7 @@ int spectra_compute_cl(
         if (ppt->has_nc_density == _TRUE_) {
           transfer_ic1_nc[index_d1] += transfer_ic1[ptr->index_tt_density+index_d1];
           transfer_ic2_nc[index_d1] += transfer_ic2[ptr->index_tt_density+index_d1];
-#ifdef HAVE_FORECAST_GAMMA
+#if defined(HAVE_FORECAST_GAMMA) || defined(HAVE_FORECAST_BIAS)
           transfer_ic1_den[index_d1] = transfer_ic1[ptr->index_tt_density+index_d1];
           transfer_ic2_den[index_d1] = transfer_ic2[ptr->index_tt_density+index_d1];
 #endif
@@ -2499,7 +2499,7 @@ int spectra_compute_cl(
             += transfer_ic2[ptr->index_tt_rsd+index_d1]
             + transfer_ic2[ptr->index_tt_d0+index_d1]
             + transfer_ic2[ptr->index_tt_d1+index_d1];
-#ifdef HAVE_FORECAST_GAMMA
+#if defined(HAVE_FORECAST_GAMMA) || defined(HAVE_FORECAST_BIAS)
           transfer_ic1_rsd[index_d1] = transfer_ic1[ptr->index_tt_rsd+index_d1];
           transfer_ic2_rsd[index_d1] = transfer_ic2[ptr->index_tt_rsd+index_d1];
 #endif
@@ -2626,7 +2626,7 @@ int spectra_compute_cl(
 
     if (_scalars_ && (psp->has_dd == _TRUE_)) {
       index_ct=0;
-#ifdef HAVE_FORECAST_GAMMA
+#if defined(HAVE_FORECAST_GAMMA)
       double tau_temp1, tau_temp2;
       double f1, f2;
       int last_index1, last_index2;
@@ -2635,7 +2635,7 @@ int spectra_compute_cl(
       class_alloc(pvecback2, pba->bg_size*sizeof(double), pba->error_message);
 #endif
       for (index_d1=0; index_d1<psp->d_size; index_d1++) {
-#ifdef HAVE_FORECAST_GAMMA
+#if defined(HAVE_FORECAST_GAMMA)
         /*
         procedure:
         - call background_tau_of_z() using ppt->selection_mean[index_dN] as the redshift to obtain tau
@@ -2656,7 +2656,7 @@ int spectra_compute_cl(
         f1 = pvecback1[pba->index_bg_f];
 #endif
         for (index_d2=index_d1; index_d2<=MIN(index_d1+psp->non_diag,psp->d_size-1); index_d2++) {
-#ifdef HAVE_FORECAST_GAMMA
+#if defined(HAVE_FORECAST_GAMMA)
           /* get tau given some redshift */
           class_call(background_tau_of_z(pba, ppt->selection_mean[index_d2], &tau_temp2),
               pba->error_message,
@@ -2678,6 +2678,15 @@ int spectra_compute_cl(
                +transfer_ic2_den[index_d2] * transfer_ic1_rsd[index_d1] * f1 / gamma
                +transfer_ic2_rsd[index_d2] * transfer_ic1_rsd[index_d1] * (f1 + f2) / gamma
             ) * factor;
+#elif defined(HAVE_FORECAST_BIAS)
+          /* \frac{\partial C_\ell}{\partial b_0} = 2 * den_1 * den_2 + den_1 * rsd_2 + den_2 * rsd_1 */
+          cl_integrand[index_q*cl_integrand_num_columns+1+psp->index_ct_dd+index_ct]=
+            primordial_pk[index_ic1_ic2]
+            * (
+               2 * transfer_ic1_den[index_d1] * transfer_ic2_den[index_d2]
+               +transfer_ic2_den[index_d2] * transfer_ic1_rsd[index_d1]
+               +transfer_ic2_rsd[index_d2] * transfer_ic1_den[index_d1]
+            ) * factor;
 #else
           cl_integrand[index_q*cl_integrand_num_columns+1+psp->index_ct_dd+index_ct]=
             primordial_pk[index_ic1_ic2]
@@ -2688,7 +2697,7 @@ int spectra_compute_cl(
           index_ct++;
         }
       }
-#ifdef HAVE_FORECAST_GAMMA
+#if defined(HAVE_FORECAST_GAMMA)
       /* free memory */
       free(pvecback1);
       free(pvecback2);
