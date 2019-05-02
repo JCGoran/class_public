@@ -2889,6 +2889,11 @@ int input_read_parameters(
                errmsg,
                errmsg);
   }
+  class_read_int("have_gamma",pba->have_gamma);
+  class_read_int("have_b0",pba->have_b0);
+  if (pba->have_gamma && pba->have_b0){
+      class_stop(errmsg, "cannot have both gamma and b0 simultaneously");
+  }
 
   return _SUCCESS_;
 
@@ -2989,6 +2994,9 @@ int input_default_params(
   pba->cs2_fld = 1.;
 
   pba->shooting_failed = _FALSE_;
+
+  pba->have_gamma = _FALSE_;
+  pba->have_b0 = _FALSE_;
 
   /** - thermodynamics structure */
 

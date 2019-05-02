@@ -334,6 +334,10 @@ struct background
 
   ErrorMsg error_message; /**< zone for writing error messages */
 
+  int have_gamma;
+
+  int have_b0;
+
   //@}
 };
 
