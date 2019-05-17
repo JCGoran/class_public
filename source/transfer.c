@@ -2185,6 +2185,21 @@ int transfer_sources(
   /* conformal time today */
   tau0 = pba->conformal_age;
 
+    double redshift = ppt->selection_mean[0];
+    int last_index1;
+    double *pvecback1, tau_temp1;
+    class_alloc(pvecback1, pba->bg_size*sizeof(double), pba->error_message);
+    class_call(background_tau_of_z(pba, redshift, &tau_temp1),
+            pba->error_message,
+            pba->error_message
+        );
+    class_call(background_at_tau(pba, tau_temp1, pba->long_info, pba->inter_normal, &last_index1, pvecback1),
+            pba->error_message,
+            pba->error_message
+        );
+    // the fixed one
+    double D1 = 0;// pvecback1[pba->index_bg_D];
+
   /** - case where we need to redefine by a window function (or any
      function of the background and of k) */
   if (redefine_source == _TRUE_) {
@@ -2701,6 +2716,12 @@ int transfer_sources(
                 }
 
                 if (_index_tt_in_range_(ptr->index_tt_nc_lens, ppt->selection_num, ppt->has_nc_lens)) {
+                  double tau_variable = tau0 - tau0_minus_tau_lensing_sources[index_tau_sources];
+                  class_call(background_at_tau(pba, tau_variable, pba->long_info, pba->inter_normal, &last_index1, pvecback1),
+            pba->error_message,
+            pba->error_message
+        );
+                  double D1_variable = 0;//pvecback1[pba->index_bg_D];
 
                   rescaling -=
                     (2.-5.*ptr->selection_magnification_bias[bin])/2.
@@ -2712,7 +2733,8 @@ int transfer_sources(
                     *cscKgen_lens
                     /sinKgen_source
                     * selection[index_tau_sources]
-                    * w_trapz_lensing_sources[index_tau_sources];
+                    * w_trapz_lensing_sources[index_tau_sources]
+                    * exp(-(D1 - D1_variable) * (D1 - D1_variable) * ptr->k[index_md][index_q] * ptr->k[index_md][index_q] / 0.24 / 0.24);
                 }
 
                 if (_index_tt_in_range_(ptr->index_tt_nc_g4, ppt->selection_num, ppt->has_nc_gr)) {
@@ -2855,6 +2877,8 @@ int transfer_sources(
      workspace wants a double) */
 
   *tau_size_out = tau_size;
+
+  free(pvecback1);
 
   return _SUCCESS_;
 
