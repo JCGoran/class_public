@@ -2198,7 +2198,7 @@ int transfer_sources(
             pba->error_message
         );
     // the fixed one
-    double D1 = 0;// pvecback1[pba->index_bg_D];
+    double D1 = pvecback1[pba->index_bg_D];
 
   /** - case where we need to redefine by a window function (or any
      function of the background and of k) */
@@ -2716,12 +2716,12 @@ int transfer_sources(
                 }
 
                 if (_index_tt_in_range_(ptr->index_tt_nc_lens, ppt->selection_num, ppt->has_nc_lens)) {
-                  double tau_variable = tau0 - tau0_minus_tau_lensing_sources[index_tau_sources];
+                  double tau_variable = tau0 - tau0_minus_tau[index_tau];
                   class_call(background_at_tau(pba, tau_variable, pba->long_info, pba->inter_normal, &last_index1, pvecback1),
-            pba->error_message,
-            pba->error_message
-        );
-                  double D1_variable = 0;//pvecback1[pba->index_bg_D];
+                        pba->error_message,
+                        pba->error_message
+                    );
+                  double D1_variable = pvecback1[pba->index_bg_D];
 
                   rescaling -=
                     (2.-5.*ptr->selection_magnification_bias[bin])/2.
