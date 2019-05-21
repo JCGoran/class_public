@@ -3641,21 +3641,20 @@ static int transfer_integrand_uetc(
 {
     struct parameters_uetc *pars = (struct parameters_uetc *) p;
     double tau1 = pars->tau_zero + (pars->tau_source - pars->tau_zero) * var[0];
-//    double tau2 = pars->tau_zero + (pars->tau_source - pars->tau_zero) * var[1];
-    //printf("tau1,2: %e, %e\n", tau1, tau2);
+    double tau2 = pars->tau_zero + (pars->tau_source - pars->tau_zero) * var[1];
 
     value[0] =
          gsl_spline_eval(pars->sources_spline, tau1, pars->sources_accel)
         *gsl_spline_eval(pars->radial_spline, pars->k * (pars->tau0 - tau1), pars->radial_accel)
-//        *gsl_spline_eval(pars->sources_spline, tau2, pars->sources_accel)
-//        *gsl_spline_eval(pars->radial_spline, tau2, pars->radial_accel)
+        *gsl_spline_eval(pars->sources_spline, tau2, pars->sources_accel)
+        *gsl_spline_eval(pars->radial_spline, pars->k * (pars->tau0 - tau2), pars->radial_accel)
         *exp(
             -pow(
                 gsl_spline_eval(pars->D_spline, tau1, pars->D_accel)
-//               -gsl_spline_eval(pars->D_spline, tau2, pars->D_accel)
+               -gsl_spline_eval(pars->D_spline, tau2, pars->D_accel)
              , 2) * pars->k * pars->k / 0.24 / 0.24
         )
-//        *(pars->tau_source - pars->tau_zero)
+        *(pars->tau_source - pars->tau_zero)
         *(pars->tau_source - pars->tau_zero);
     return EXIT_SUCCESS;
 }
@@ -3860,7 +3859,6 @@ int transfer_integrate(
     }
 
     double tau_zero = sources_xi[0], tau_source = sources_xi[(index_tau_max + 1)- 1];
-    //printf("%e, %e\n", tau_zero, tau_source);
 
     gsl_spline_init(sources_spline, sources_xi, sources_temp, (index_tau_max + 1));
     gsl_spline_init(radial_spline, radial_xi, radial_temp, (index_tau_max + 1));
@@ -3871,6 +3869,7 @@ int transfer_integrate(
     free(sources_temp);
     free(radial_temp);
     free(D);
+    free(temp_bg);
 
     struct parameters_uetc par_uetc;
     par_uetc.D_spline = D_spline;
@@ -3891,12 +3890,12 @@ int transfer_integrate(
         transfer_integrand_uetc,
         (void *)&par_uetc, 1,
         5e-4, 0, 0,
-        1, 1000, 7,
+        1, 50000, 7,
         NULL, NULL,
         &nregions, &neval, &fail, result, error, prob
     );
 
-    *trsf = result[0];
+    *trsf = sqrt(fabs(result[0]));
 
     gsl_spline_free(D_spline);
     gsl_spline_free(radial_spline);
