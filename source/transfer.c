@@ -28,6 +28,17 @@
  */
 
 #include "transfer.h"
+#include "cuba.h"
+#include <gsl/gsl_interp.h>
+#include <gsl/gsl_spline.h>
+
+
+struct parameters_uetc {
+    gsl_spline *D_spline, *sources_spline, *radial_spline;
+    gsl_interp_accel *D_accel, *sources_accel, *radial_accel;
+    double k, tau_zero, tau_source;
+};
+
 
 /**
  * Transfer function \f$ \Delta_l^{X} (q) \f$ at a given wavenumber q.
@@ -1889,6 +1900,7 @@ int transfer_compute_for_each_q(
 
               /* compute the transfer function for this l */
               class_call(transfer_compute_for_each_l(
+                                                     pba,
                                                      ptw,
                                                      ppr,
                                                      ppt,
@@ -2184,21 +2196,6 @@ int transfer_sources(
 
   /* conformal time today */
   tau0 = pba->conformal_age;
-
-    double redshift = ppt->selection_mean[0];
-    int last_index1;
-    double *pvecback1, tau_temp1;
-    class_alloc(pvecback1, pba->bg_size*sizeof(double), pba->error_message);
-    class_call(background_tau_of_z(pba, redshift, &tau_temp1),
-            pba->error_message,
-            pba->error_message
-        );
-    class_call(background_at_tau(pba, tau_temp1, pba->long_info, pba->inter_normal, &last_index1, pvecback1),
-            pba->error_message,
-            pba->error_message
-        );
-    // the fixed one
-    double D1 = pvecback1[pba->index_bg_D];
 
   /** - case where we need to redefine by a window function (or any
      function of the background and of k) */
@@ -2716,12 +2713,6 @@ int transfer_sources(
                 }
 
                 if (_index_tt_in_range_(ptr->index_tt_nc_lens, ppt->selection_num, ppt->has_nc_lens)) {
-                  double tau_variable = tau0 - tau0_minus_tau[index_tau];
-                  class_call(background_at_tau(pba, tau_variable, pba->long_info, pba->inter_normal, &last_index1, pvecback1),
-                        pba->error_message,
-                        pba->error_message
-                    );
-                  double D1_variable = pvecback1[pba->index_bg_D];
 
                   rescaling -=
                     (2.-5.*ptr->selection_magnification_bias[bin])/2.
@@ -2733,8 +2724,7 @@ int transfer_sources(
                     *cscKgen_lens
                     /sinKgen_source
                     * selection[index_tau_sources]
-                    * w_trapz_lensing_sources[index_tau_sources]
-                    * exp(-(D1 - D1_variable) * (D1 - D1_variable) * ptr->k[index_md][index_q] * ptr->k[index_md][index_q] / 0.24 / 0.24);
+                    * w_trapz_lensing_sources[index_tau_sources];
                 }
 
                 if (_index_tt_in_range_(ptr->index_tt_nc_g4, ppt->selection_num, ppt->has_nc_gr)) {
@@ -2877,8 +2867,6 @@ int transfer_sources(
      workspace wants a double) */
 
   *tau_size_out = tau_size;
-
-  free(pvecback1);
 
   return _SUCCESS_;
 
@@ -3478,6 +3466,7 @@ int transfer_selection_compute(
  */
 
 int transfer_compute_for_each_l(
+                                struct background *pba,
                                 struct transfer_workspace * ptw,
                                 struct precision * ppr,
                                 struct perturbs * ppt,
@@ -3548,6 +3537,7 @@ int transfer_compute_for_each_l(
   }
   else {
     class_call(transfer_integrate(
+                                  pba,
                                   ppt,
                                   ptr,
                                   ptw,
@@ -3642,6 +3632,36 @@ int transfer_use_limber(
   return _SUCCESS_;
 }
 
+
+static int transfer_integrand_uetc(
+    const int *ndim, const cubareal var[],
+    const int *ncomp, cubareal value[],
+    void *p
+)
+{
+    struct parameters_uetc *pars = (struct parameters_uetc *) p;
+    double tau1 = pars->tau_zero + (pars->tau_source - pars->tau_zero) * var[0];
+//    double tau2 = pars->tau_zero + (pars->tau_source - pars->tau_zero) * var[1];
+    //printf("tau1,2: %e, %e\n", tau1, tau2);
+
+    value[0] =
+         gsl_spline_eval(pars->sources_spline, tau1, pars->sources_accel)
+        *gsl_spline_eval(pars->radial_spline, tau1, pars->radial_accel)
+ //       *gsl_spline_eval(pars->sources_spline, tau2, pars->sources_accel)
+//        *gsl_spline_eval(pars->radial_spline, tau2, pars->radial_accel)
+        /*
+        *exp(
+            -pow(
+                gsl_spline_eval(pars->D_spline, tau1, pars->D_accel)
+               -gsl_spline_eval(pars->D_spline, tau2, pars->D_accel)
+             , 2) * pars->k * pars->k / 0.24 / 0.24
+        )
+        */
+//        *(pars->tau_source - pars->tau_zero)
+        *(pars->tau_source - pars->tau_zero);
+    return EXIT_SUCCESS;
+}
+
 /**
  * This routine computes the transfer functions \f$ \Delta_l^{X} (k) \f$)
  * for each mode, initial condition, type, multipole l and wavenumber k,
@@ -3664,6 +3684,7 @@ int transfer_use_limber(
  */
 
 int transfer_integrate(
+                       struct background *pba,
                        struct perturbs * ppt,
                        struct transfers * ptr,
                        struct transfer_workspace *ptw,
@@ -3798,28 +3819,84 @@ int transfer_integrate(
              ptr->error_message,
              ptr->error_message);
 
-  /** - Now we do most of the convolution integral: */
-  class_call(array_trapezoidal_convolution(sources,
-                                           radial_function,
-                                           index_tau_max+1,
-                                           w_trapz,
-                                           trsf,
-                                           ptr->error_message),
-             ptr->error_message,
-             ptr->error_message);
+    gsl_spline *radial_spline, *sources_spline, *D_spline;
+    gsl_interp_accel *radial_accel, *sources_accel, *D_accel;
 
-  /** - This integral is correct for the case where no truncation has
-      occurred. If it has been truncated at some index_tau_max because
-      f[index_tau_max+1]==0, it is still correct. The 'mistake' in using
-      the wrong weight w_trapz[index_tau_max] is exactly compensated by the
-      triangle we miss. However, for the Bessel cut off, we must subtract the
-      wrong triangle and add the correct triangle. */
-  if ((index_tau_max!=(ptw->tau_size-1))&&(index_tau_max==index_tau_max_Bessel)){
-    //Bessel truncation
-    *trsf -= 0.5*(tau0_minus_tau[index_tau_max+1]-tau0_minus_tau_min_bessel)*
-      radial_function[index_tau_max]*sources[index_tau_max];
-  }
+    const gsl_interp_type *T = gsl_interp_akima;
 
+    radial_spline
+        = gsl_spline_alloc(T, ptw->tau_size);
+    radial_accel
+        = gsl_interp_accel_alloc();
+    sources_spline
+        = gsl_spline_alloc(T, ptw->tau_size);
+    sources_accel
+        = gsl_interp_accel_alloc();
+    D_spline
+        = gsl_spline_alloc(T, ptw->tau_size);
+    D_accel
+        = gsl_interp_accel_alloc();
+
+    int some_index;
+    double *temp_bg;
+    class_alloc(temp_bg, pba->bg_size*sizeof(double), pba->error_message);
+
+    double tau0 = pba->conformal_age;
+    double *xi = malloc(sizeof(double)*ptw->tau_size);
+    double *D = malloc(sizeof(double)*ptw->tau_size);
+    for (int index = 0; index < ptw->tau_size; ++index){
+        xi[index] = tau0 - tau0_minus_tau[index];
+        class_call(
+            background_at_tau(
+                pba, xi[index], pba->long_info, pba->inter_normal, &some_index, temp_bg),
+            pba->error_message,
+            pba->error_message
+        );
+        D[index] = temp_bg[pba->index_bg_D];
+    }
+
+    double tau_zero = xi[0], tau_source = xi[ptw->tau_size- 1];
+    //printf("%e, %e\n", tau_zero, tau_source);
+
+    gsl_spline_init(sources_spline, xi, sources, ptw->tau_size);
+    gsl_spline_init(radial_spline, xi, radial_function, ptw->tau_size);
+    gsl_spline_init(D_spline, xi, D, ptw->tau_size);
+
+    free(xi);
+    free(D);
+    free(temp_bg);
+
+    struct parameters_uetc par_uetc;
+    par_uetc.D_spline = D_spline;
+    par_uetc.D_accel = D_accel;
+    par_uetc.sources_spline = sources_spline;
+    par_uetc.sources_accel = sources_accel;
+    par_uetc.radial_spline = radial_spline;
+    par_uetc.radial_accel = radial_accel;
+    par_uetc.k = ptr->q[index_q];
+    par_uetc.tau_zero = tau_zero;
+    par_uetc.tau_source = tau_source;
+
+    int nregions, neval, fail;
+    double result[1], error[1], prob[1];
+
+    Cuhre(2, 1,
+        transfer_integrand_uetc,
+        (void *)&par_uetc, 1,
+        5e-4, 0, 0,
+        1, 100000, 7,
+        NULL, NULL,
+        &nregions, &neval, &fail, result, error, prob
+    );
+
+    *trsf = result[0];
+
+    gsl_spline_free(D_spline);
+    gsl_spline_free(radial_spline);
+    gsl_spline_free(sources_spline);
+    gsl_interp_accel_free(D_accel);
+    gsl_interp_accel_free(radial_accel);
+    gsl_interp_accel_free(sources_accel);
 
   free(radial_function);
   return _SUCCESS_;

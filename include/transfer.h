@@ -498,6 +498,7 @@ extern "C" {
                                  int bin);
 
   int transfer_compute_for_each_l(
+                                  struct background *pba,
                                   struct transfer_workspace * ptw,
                                   struct precision * ppr,
                                   struct perturbs * ppt,
@@ -525,6 +526,7 @@ extern "C" {
                           );
 
   int transfer_integrate(
+                         struct background *pba,
                          struct perturbs * ppt,
                          struct transfers * ptr,
                          struct transfer_workspace *ptw,

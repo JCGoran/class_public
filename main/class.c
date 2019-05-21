@@ -3,6 +3,7 @@
  */
 
 #include "class.h"
+#include "cuba.h"
 
 int main(int argc, char **argv) {
 
@@ -17,6 +18,8 @@ int main(int argc, char **argv) {
   struct lensing le;          /* for lensed spectra */
   struct output op;           /* for output files */
   ErrorMsg errmsg;            /* for error messages */
+
+    cubacores(0, 10000);
 
   if (input_init_from_arguments(argc, argv,&pr,&ba,&th,&pt,&tr,&pm,&sp,&nl,&le,&op,errmsg) == _FAILURE_) {
     printf("\n\nError running input_init_from_arguments \n=>%s\n",errmsg);
