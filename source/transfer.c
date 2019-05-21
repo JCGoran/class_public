@@ -31,6 +31,8 @@
 #include "cuba.h"
 #include <gsl/gsl_interp.h>
 #include <gsl/gsl_spline.h>
+#include <gsl/gsl_integration.h>
+#include <gsl/gsl_errno.h>
 
 
 struct parameters_uetc {
@@ -3632,6 +3634,17 @@ int transfer_use_limber(
   return _SUCCESS_;
 }
 
+static double transfer_integrand_uetc_gsl(
+    double x, void *p
+)
+{
+    struct parameters_uetc *pars = (struct parameters_uetc *) p;
+    double tau1 = x;
+
+     return
+         gsl_spline_eval(pars->sources_spline, tau1, pars->sources_accel)
+        *gsl_spline_eval(pars->radial_spline, tau1, pars->radial_accel);
+}
 
 static int transfer_integrand_uetc(
     const int *ndim, const cubareal var[],
@@ -3877,19 +3890,28 @@ int transfer_integrate(
     par_uetc.tau_zero = tau_zero;
     par_uetc.tau_source = tau_source;
 
-    int nregions, neval, fail;
-    double result[1], error[1], prob[1];
+    double prec = 1E-3;
+    gsl_function integrand;
+    integrand.function = &transfer_integrand_uetc_gsl;
+    integrand.params = &par_uetc;
 
-    Cuhre(2, 1,
-        transfer_integrand_uetc,
-        (void *)&par_uetc, 1,
-        5e-4, 0, 0,
-        1, 100000, 7,
-        NULL, NULL,
-        &nregions, &neval, &fail, result, error, prob
+    const size_t intspace = 1000000;
+    gsl_error_handler_t *default_handler =
+        gsl_set_error_handler_off();
+
+    double result, error;
+    gsl_integration_workspace *wspace =
+        gsl_integration_workspace_alloc(intspace);
+    gsl_integration_qag(
+        &integrand, tau_zero, tau_source, 0,
+        prec, intspace,
+        GSL_INTEG_GAUSS61, wspace,
+        &result, &error
     );
+    gsl_integration_workspace_free(wspace);
+    gsl_set_error_handler(default_handler);
 
-    *trsf = result[0];
+    *trsf = result;
 
     gsl_spline_free(D_spline);
     gsl_spline_free(radial_spline);
@@ -3897,6 +3919,19 @@ int transfer_integrate(
     gsl_interp_accel_free(D_accel);
     gsl_interp_accel_free(radial_accel);
     gsl_interp_accel_free(sources_accel);
+
+  /** - This integral is correct for the case where no truncation has
+      occurred. If it has been truncated at some index_tau_max because
+      f[index_tau_max+1]==0, it is still correct. The 'mistake' in using
+      the wrong weight w_trapz[index_tau_max] is exactly compensated by the
+      triangle we miss. However, for the Bessel cut off, we must subtract the
+      wrong triangle and add the correct triangle. */
+  if ((index_tau_max!=(ptw->tau_size-1))&&(index_tau_max==index_tau_max_Bessel)){
+    //Bessel truncation
+    *trsf -= 0.5*(tau0_minus_tau[index_tau_max+1]-tau0_minus_tau_min_bessel)*
+      radial_function[index_tau_max]*sources[index_tau_max];
+  }
+
 
   free(radial_function);
   return _SUCCESS_;
