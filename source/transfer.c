@@ -38,7 +38,7 @@
 struct parameters_uetc {
     gsl_spline *D_spline, *sources_spline, *radial_spline;
     gsl_interp_accel *D_accel, *sources_accel, *radial_accel;
-    double k, tau_zero, tau_source;
+    double k, tau_zero, tau_source, tau0;
 };
 
 
@@ -3643,7 +3643,7 @@ static double transfer_integrand_uetc_gsl(
 
      return
          gsl_spline_eval(pars->sources_spline, tau1, pars->sources_accel)
-        *gsl_spline_eval(pars->radial_spline, tau1, pars->radial_accel);
+        *gsl_spline_eval(pars->radial_spline, pars->k * (pars->tau0 - tau1), pars->radial_accel);
 }
 
 static int transfer_integrand_uetc(
@@ -3831,6 +3831,18 @@ int transfer_integrate(
                                       ),
              ptr->error_message,
              ptr->error_message);
+  /** - Now we do most of the convolution integral: */
+  /*
+  class_call(array_trapezoidal_convolution(sources,
+                                           radial_function,
+                                           index_tau_max+1,
+                                           w_trapz,
+                                           trsf,
+                                           ptr->error_message),
+             ptr->error_message,
+             ptr->error_message);
+    printf("%d\n", index_tau_max);
+    */
 
     gsl_spline *radial_spline, *sources_spline, *D_spline;
     gsl_interp_accel *radial_accel, *sources_accel, *D_accel;
@@ -3838,50 +3850,39 @@ int transfer_integrate(
     const gsl_interp_type *T = gsl_interp_akima;
 
     radial_spline
-        = gsl_spline_alloc(T, ptw->tau_size);
+        = gsl_spline_alloc(T, index_tau_max + 1);
     radial_accel
         = gsl_interp_accel_alloc();
     sources_spline
-        = gsl_spline_alloc(T, ptw->tau_size);
+        = gsl_spline_alloc(T, index_tau_max + 1);
     sources_accel
         = gsl_interp_accel_alloc();
-    D_spline
-        = gsl_spline_alloc(T, ptw->tau_size);
-    D_accel
-        = gsl_interp_accel_alloc();
-
-    int some_index;
-    double *temp_bg;
-    class_alloc(temp_bg, pba->bg_size*sizeof(double), pba->error_message);
 
     double tau0 = pba->conformal_age;
-    double *xi = malloc(sizeof(double)*ptw->tau_size);
-    double *D = malloc(sizeof(double)*ptw->tau_size);
-    for (int index = 0; index < ptw->tau_size; ++index){
-        xi[index] = tau0 - tau0_minus_tau[index];
-        class_call(
-            background_at_tau(
-                pba, xi[index], pba->long_info, pba->inter_normal, &some_index, temp_bg),
-            pba->error_message,
-            pba->error_message
-        );
-        D[index] = temp_bg[pba->index_bg_D];
+    double *sources_xi = malloc(sizeof(double)*(index_tau_max + 1));
+    double *radial_xi = malloc(sizeof(double)*(index_tau_max + 1));
+    double *sources_temp = malloc(sizeof(double)*(index_tau_max + 1));
+    double *radial_temp = malloc(sizeof(double)*(index_tau_max + 1));
+    for (int index = 0; index < (index_tau_max + 1); ++index){
+        sources_temp[index] = sources[index];
+        radial_temp[(index_tau_max + 1) - 1 - index] = radial_function[index];
+        sources_xi[index] = tau0 - tau0_minus_tau[index];
+        radial_xi[(index_tau_max + 1) - 1 - index] = tau0_minus_tau[index] * ptr->q[index_q];
+        //printf("t0-t0mt, t0mt = %e, %e\n", sources_xi[index], tau0_minus_tau[index]);
     }
+    //exit(1);
 
-    double tau_zero = xi[0], tau_source = xi[ptw->tau_size- 1];
+    double tau_zero = sources_xi[0], tau_source = sources_xi[(index_tau_max + 1)- 1];
     //printf("%e, %e\n", tau_zero, tau_source);
 
-    gsl_spline_init(sources_spline, xi, sources, ptw->tau_size);
-    gsl_spline_init(radial_spline, xi, radial_function, ptw->tau_size);
-    gsl_spline_init(D_spline, xi, D, ptw->tau_size);
+    gsl_spline_init(sources_spline, sources_xi, sources_temp, (index_tau_max + 1));
+    gsl_spline_init(radial_spline, radial_xi, radial_temp, (index_tau_max + 1));
 
-    free(xi);
-    free(D);
-    free(temp_bg);
+    free(sources_xi);
+    free(sources_temp);
+    free(radial_temp);
 
     struct parameters_uetc par_uetc;
-    par_uetc.D_spline = D_spline;
-    par_uetc.D_accel = D_accel;
     par_uetc.sources_spline = sources_spline;
     par_uetc.sources_accel = sources_accel;
     par_uetc.radial_spline = radial_spline;
@@ -3889,8 +3890,9 @@ int transfer_integrate(
     par_uetc.k = ptr->q[index_q];
     par_uetc.tau_zero = tau_zero;
     par_uetc.tau_source = tau_source;
+    par_uetc.tau0 = tau0;
 
-    double prec = 1E-3;
+    double prec = 1E-5;
     gsl_function integrand;
     integrand.function = &transfer_integrand_uetc_gsl;
     integrand.params = &par_uetc;
