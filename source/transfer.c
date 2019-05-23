@@ -3632,6 +3632,20 @@ int transfer_use_limber(
   return _SUCCESS_;
 }
 
+/**
+ * This routine computes the unequal time correlator (UETC) for lensing-lensing
+ * at the same redshift (autocorrelation only) for a given wavenumber k
+ * and multipole l by convolving the source function (passed in input in the array
+ * interpolated_sources) with Bessel functions (passed in input in the
+ * bessels structure).
+ *
+ * @param ndim           Input: pointer to number of dimensions of integration
+ * @param var            Input: array of integration variables
+ * @param ncomp          Input: pointer to number of components of integrand (if vector)
+ * @param value          Output: pointer to the where the output will be stored
+ * @param p              Input: pointer to structure containing various parameters (l, k, splines...)
+ * @return success
+ */
 
 static int transfer_integrand_uetc(
     const int *ndim, const cubareal var[],
@@ -3639,23 +3653,23 @@ static int transfer_integrand_uetc(
     void *p
 )
 {
-    struct parameters_uetc *pars = (struct parameters_uetc *) p;
-    double tau1 = pars->tau_zero + (pars->tau_source - pars->tau_zero) * var[0];
-    double tau2 = pars->tau_zero + (pars->tau_source - pars->tau_zero) * var[1];
-
+    struct parameters_uetc *par_uetc = (struct parameters_uetc *) p;
+    // TODO find a way to enable the case z1 != z2 (cross-spectra)
+    double tau1 = par_uetc->tau_zero + (par_uetc->tau_source - par_uetc->tau_zero) * var[0];
+    double tau2 = par_uetc->tau_zero + (par_uetc->tau_source - par_uetc->tau_zero) * var[1];
     value[0] =
-         gsl_spline_eval(pars->sources_spline, tau1, pars->sources_accel)
-        *gsl_spline_eval(pars->radial_spline, pars->k * (pars->tau0 - tau1), pars->radial_accel)
-        *gsl_spline_eval(pars->sources_spline, tau2, pars->sources_accel)
-        *gsl_spline_eval(pars->radial_spline, pars->k * (pars->tau0 - tau2), pars->radial_accel)
+         gsl_spline_eval(par_uetc->sources_spline, tau1, par_uetc->sources_accel)
+        *gsl_spline_eval(par_uetc->radial_spline, par_uetc->k * (par_uetc->tau0 - tau1), par_uetc->radial_accel)
+        *gsl_spline_eval(par_uetc->sources_spline, tau2, par_uetc->sources_accel)
+        *gsl_spline_eval(par_uetc->radial_spline, par_uetc->k * (par_uetc->tau0 - tau2), par_uetc->radial_accel)
         *exp(
             -pow(
-                gsl_spline_eval(pars->D_spline, tau1, pars->D_accel)
-               -gsl_spline_eval(pars->D_spline, tau2, pars->D_accel)
-             , 2) * pars->k * pars->k / 0.24 / 0.24
+                gsl_spline_eval(par_uetc->D_spline, tau1, par_uetc->D_accel)
+               -gsl_spline_eval(par_uetc->D_spline, tau2, par_uetc->D_accel)
+             , 2) * par_uetc->k * par_uetc->k / 0.24 / 0.24 // TODO don't hardcode k_NL
         )
-        *(pars->tau_source - pars->tau_zero)
-        *(pars->tau_source - pars->tau_zero);
+        *(par_uetc->tau_source - par_uetc->tau_zero)
+        *(par_uetc->tau_source - par_uetc->tau_zero);
     return EXIT_SUCCESS;
 }
 
@@ -3816,93 +3830,123 @@ int transfer_integrate(
              ptr->error_message,
              ptr->error_message);
 
-    gsl_spline *radial_spline, *sources_spline, *D_spline;
-    gsl_interp_accel *radial_accel, *sources_accel, *D_accel;
+    if (ptr->has_cuba == _TRUE_){
 
-    const gsl_interp_type *T = gsl_interp_akima;
+        gsl_spline *radial_spline, *sources_spline, *D_spline;
+        gsl_interp_accel *radial_accel, *sources_accel, *D_accel;
 
-    radial_spline
-        = gsl_spline_alloc(T, (index_tau_max + 1));
-    radial_accel
-        = gsl_interp_accel_alloc();
-    sources_spline
-        = gsl_spline_alloc(T, (index_tau_max + 1));
-    sources_accel
-        = gsl_interp_accel_alloc();
-    D_spline
-        = gsl_spline_alloc(T, (index_tau_max + 1));
-    D_accel
-        = gsl_interp_accel_alloc();
+        const gsl_interp_type *T = gsl_interp_akima;
 
-    int some_index;
-    double *temp_bg;
-    class_alloc(temp_bg, pba->bg_size*sizeof(double), pba->error_message);
+        radial_spline
+            = gsl_spline_alloc(T, (index_tau_max + 1));
+        radial_accel
+            = gsl_interp_accel_alloc();
+        sources_spline
+            = gsl_spline_alloc(T, (index_tau_max + 1));
+        sources_accel
+            = gsl_interp_accel_alloc();
+        D_spline
+            = gsl_spline_alloc(T, (index_tau_max + 1));
+        D_accel
+            = gsl_interp_accel_alloc();
 
-    double tau0 = pba->conformal_age;
-    double *sources_xi = malloc(sizeof(double)*(index_tau_max + 1));
-    double *radial_xi = malloc(sizeof(double)*(index_tau_max + 1));
-    double *sources_temp = malloc(sizeof(double)*(index_tau_max + 1));
-    double *radial_temp = malloc(sizeof(double)*(index_tau_max + 1));
-    double *D = malloc(sizeof(double)*(index_tau_max + 1));
-    for (int index = 0; index < (index_tau_max + 1); ++index){
-        sources_temp[index] = sources[index];
-        radial_temp[(index_tau_max + 1) - 1 - index] = radial_function[index];
-        sources_xi[index] = tau0 - tau0_minus_tau[index];
-        radial_xi[(index_tau_max + 1) - 1 - index] = tau0_minus_tau[index] * ptr->q[index_q];
-        class_call(
-            background_at_tau(
-                pba, sources_xi[index], pba->long_info, pba->inter_normal, &some_index, temp_bg),
-            pba->error_message,
-            pba->error_message
+        int some_index;
+        double *temp_bg;
+        class_alloc(temp_bg, pba->bg_size*sizeof(double), pba->error_message);
+
+        double tau0 = pba->conformal_age;
+        double *sources_xi = malloc(sizeof(double)*(index_tau_max + 1));
+        double *radial_xi = malloc(sizeof(double)*(index_tau_max + 1));
+        double *sources_temp = malloc(sizeof(double)*(index_tau_max + 1));
+        double *radial_temp = malloc(sizeof(double)*(index_tau_max + 1));
+        double *D = malloc(sizeof(double)*(index_tau_max + 1));
+        for (int index = 0; index < (index_tau_max + 1); ++index){
+            sources_temp[index] = sources[index];
+            radial_temp[(index_tau_max + 1) - 1 - index] = radial_function[index];
+            sources_xi[index] = tau0 - tau0_minus_tau[index];
+            radial_xi[(index_tau_max + 1) - 1 - index] = tau0_minus_tau[index] * ptr->q[index_q];
+            class_call(
+                background_at_tau(
+                    pba, sources_xi[index], pba->long_info, pba->inter_normal, &some_index, temp_bg),
+                pba->error_message,
+                pba->error_message
+            );
+            D[index] = temp_bg[pba->index_bg_D];
+        }
+        if (ptr->has_uetc == _TRUE_){
+            for (int index = 0; index < (index_tau_max + 1); ++index){
+                class_call(
+                    background_at_tau(
+                        pba, sources_xi[index], pba->long_info, pba->inter_normal, &some_index, temp_bg),
+                    pba->error_message,
+                    pba->error_message
+                );
+                D[index] = temp_bg[pba->index_bg_D];
+            }
+        }
+        else{
+            for (int index = 0; index < (index_tau_max + 1); ++index){
+                D[index] = 0;
+            }
+        }
+
+        double tau_zero = sources_xi[0], tau_source = sources_xi[(index_tau_max + 1)- 1];
+
+        gsl_spline_init(sources_spline, sources_xi, sources_temp, (index_tau_max + 1));
+        gsl_spline_init(radial_spline, radial_xi, radial_temp, (index_tau_max + 1));
+        gsl_spline_init(D_spline, sources_xi, D, (index_tau_max + 1));
+
+        free(sources_xi);
+        free(radial_xi);
+        free(sources_temp);
+        free(radial_temp);
+        free(D);
+        free(temp_bg);
+
+        struct parameters_uetc par_uetc;
+        par_uetc.D_spline = D_spline;
+        par_uetc.D_accel = D_accel;
+        par_uetc.sources_spline = sources_spline;
+        par_uetc.sources_accel = sources_accel;
+        par_uetc.radial_spline = radial_spline;
+        par_uetc.radial_accel = radial_accel;
+        par_uetc.k = ptr->q[index_q];
+        par_uetc.tau_zero = tau_zero;
+        par_uetc.tau_source = tau_source;
+        par_uetc.tau0 = tau0;
+
+        int nregions, neval, fail;
+        double result[1], error[1], prob[1];
+
+        Cuhre(2, 1,
+            transfer_integrand_uetc,
+            (void *)&par_uetc, 1,
+            5e-4, 0, 0,
+            1, 50000, 7,
+            NULL, NULL,
+            &nregions, &neval, &fail, result, error, prob
         );
-        D[index] = temp_bg[pba->index_bg_D];
+
+        *trsf = sqrt(fabs(result[0]));
+
+        gsl_spline_free(D_spline);
+        gsl_spline_free(radial_spline);
+        gsl_spline_free(sources_spline);
+        gsl_interp_accel_free(D_accel);
+        gsl_interp_accel_free(radial_accel);
+        gsl_interp_accel_free(sources_accel);
     }
-
-    double tau_zero = sources_xi[0], tau_source = sources_xi[(index_tau_max + 1)- 1];
-
-    gsl_spline_init(sources_spline, sources_xi, sources_temp, (index_tau_max + 1));
-    gsl_spline_init(radial_spline, radial_xi, radial_temp, (index_tau_max + 1));
-    gsl_spline_init(D_spline, sources_xi, D, (index_tau_max + 1));
-
-    free(sources_xi);
-    free(radial_xi);
-    free(sources_temp);
-    free(radial_temp);
-    free(D);
-    free(temp_bg);
-
-    struct parameters_uetc par_uetc;
-    par_uetc.D_spline = D_spline;
-    par_uetc.D_accel = D_accel;
-    par_uetc.sources_spline = sources_spline;
-    par_uetc.sources_accel = sources_accel;
-    par_uetc.radial_spline = radial_spline;
-    par_uetc.radial_accel = radial_accel;
-    par_uetc.k = ptr->q[index_q];
-    par_uetc.tau_zero = tau_zero;
-    par_uetc.tau_source = tau_source;
-    par_uetc.tau0 = tau0;
-
-    int nregions, neval, fail;
-    double result[1], error[1], prob[1];
-
-    Cuhre(2, 1,
-        transfer_integrand_uetc,
-        (void *)&par_uetc, 1,
-        5e-4, 0, 0,
-        1, 50000, 7,
-        NULL, NULL,
-        &nregions, &neval, &fail, result, error, prob
-    );
-
-    *trsf = sqrt(fabs(result[0]));
-
-    gsl_spline_free(D_spline);
-    gsl_spline_free(radial_spline);
-    gsl_spline_free(sources_spline);
-    gsl_interp_accel_free(D_accel);
-    gsl_interp_accel_free(radial_accel);
-    gsl_interp_accel_free(sources_accel);
+    else{
+  /** - Now we do most of the convolution integral: */
+  class_call(array_trapezoidal_convolution(sources,
+                                           radial_function,
+                                           index_tau_max+1,
+                                           w_trapz,
+                                           trsf,
+                                           ptr->error_message),
+             ptr->error_message,
+             ptr->error_message);
+    }
 
   /** - This integral is correct for the case where no truncation has
       occurred. If it has been truncated at some index_tau_max because
@@ -3915,6 +3959,7 @@ int transfer_integrate(
     *trsf -= 0.5*(tau0_minus_tau[index_tau_max+1]-tau0_minus_tau_min_bessel)*
       radial_function[index_tau_max]*sources[index_tau_max];
   }
+
 
   free(radial_function);
   return _SUCCESS_;

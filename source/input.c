@@ -2382,6 +2382,36 @@ int input_read_parameters(
     }
 
     class_call(parser_read_string(pfc,
+                                  "has_cuba",
+                                  &(string1),
+                                  &(flag1),
+                                  errmsg),
+               errmsg,
+               errmsg);
+
+    if ((flag1 == _TRUE_)) {
+      if ((strstr(string1,"y") != NULL) || (strstr(string1,"Y") != NULL))
+        ptr->has_cuba = _TRUE_;
+    }
+
+    class_call(parser_read_string(pfc,
+                                  "has_uetc_lens_lens",
+                                  &(string1),
+                                  &(flag1),
+                                  errmsg),
+               errmsg,
+               errmsg);
+
+    if ((flag1 == _TRUE_)) {
+      if ((strstr(string1,"y") != NULL) || (strstr(string1,"Y") != NULL))
+        ptr->has_uetc_lens_lens = _TRUE_;
+    }
+    if (ptr->has_uetc_lens_lens == _TRUE_ && ptr->has_cuba == _FALSE_){
+        class_stop(errmsg,
+            "Cannot use lensing lensing UETC without Cuba integration\n");
+    }
+
+    class_call(parser_read_string(pfc,
                                   "dNdz_evolution",
                                   &(string1),
                                   &(flag1),
@@ -3187,6 +3217,8 @@ int input_default_params(
   ptr->has_nz_file = _FALSE_;
   ptr->has_nz_evo_analytic = _FALSE_;
   ptr->has_nz_evo_file = _FALSE_;
+  ptr->has_cuba = _FALSE_;
+  ptr->has_uetc_lens_lens = _FALSE_;
 
   /** - output structure */
 
