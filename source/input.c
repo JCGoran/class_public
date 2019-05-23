@@ -2392,6 +2392,21 @@ int input_read_parameters(
     if ((flag1 == _TRUE_)) {
       if ((strstr(string1,"y") != NULL) || (strstr(string1,"Y") != NULL))
         ptr->has_cuba = _TRUE_;
+        class_call(parser_read_int(pfc,
+                              "cuba_sampling",
+                              &int1,
+                              &flag1,
+                              errmsg),
+                   errmsg,
+                   errmsg);
+        if ((flag1 == _TRUE_)){
+            if (int1 < 100000000 && int1 > 100)
+                ptr->cuba_sampling = int1;
+            else{
+                class_stop(errmsg,
+                    "You requested integration using Cuba, but have specified an invalid integration sampling %d, please choose one in the range [100, 100000000]\n", int1);
+            }
+        }
     }
 
     class_call(parser_read_string(pfc,
@@ -3219,6 +3234,7 @@ int input_default_params(
   ptr->has_nz_evo_file = _FALSE_;
   ptr->has_cuba = _FALSE_;
   ptr->has_uetc_lens_lens = _FALSE_;
+  ptr->cuba_sampling = 100000;
 
   /** - output structure */
 

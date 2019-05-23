@@ -3873,7 +3873,7 @@ int transfer_integrate(
             );
             D[index] = temp_bg[pba->index_bg_D];
         }
-        if (ptr->has_uetc == _TRUE_){
+        if (ptr->has_uetc_lens_lens == _TRUE_){
             for (int index = 0; index < (index_tau_max + 1); ++index){
                 class_call(
                     background_at_tau(
@@ -3922,7 +3922,7 @@ int transfer_integrate(
             transfer_integrand_uetc,
             (void *)&par_uetc, 1,
             5e-4, 0, 0,
-            1, 50000, 7,
+            1, ptr->cuba_sampling, 7,
             NULL, NULL,
             &nregions, &neval, &fail, result, error, prob
         );

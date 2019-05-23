@@ -160,6 +160,7 @@ struct transfers {
   short transfer_verbose; /**< flag regulating the amount of information sent to standard output (none if set to zero) */
 
   short has_cuba, has_uetc_lens_lens;
+  size_t cuba_sampling;
 
   ErrorMsg error_message; /**< zone for writing error messages */
 
