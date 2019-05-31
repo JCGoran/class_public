@@ -2198,7 +2198,13 @@ int transfer_sources(
             pba->error_message
         );
     // the fixed one
-    double D1 = pvecback1[pba->index_bg_D];
+    double D1 = 0;
+    if (
+        ptr->has_uetc_den_lens == _TRUE_ &&
+        ppt->has_nc_lens == _TRUE_ &&
+        ppt->has_nc_density == _TRUE_
+    )
+        D1 = pvecback1[pba->index_bg_D];
 
   /** - case where we need to redefine by a window function (or any
      function of the background and of k) */
@@ -2721,7 +2727,13 @@ int transfer_sources(
                         pba->error_message,
                         pba->error_message
                     );
-                  double D1_variable = pvecback1[pba->index_bg_D];
+                  double D1_variable = 0;
+                  if (
+                    ptr->has_uetc_den_lens == _TRUE_ &&
+                    ppt->has_nc_lens == _TRUE_ &&
+                    ppt->has_nc_density == _TRUE_
+                  )
+                    D1_variable = pvecback1[pba->index_bg_D];
 
                   rescaling -=
                     (2.-5.*ptr->selection_magnification_bias[bin])/2.
