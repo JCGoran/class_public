@@ -2396,19 +2396,11 @@ int spectra_compute_cl(
   double factor;
   int index_q_spline=0;
 
-  double *transfer_ic1_den = NULL;
-  double *transfer_ic1_len = NULL;
-  double *transfer_ic2_den = NULL;
-  double *transfer_ic2_len = NULL;
   index_ic1_ic2 = index_symmetric_matrix(index_ic1,index_ic2,psp->ic_size[index_md]);
 
   if (ppt->has_cl_number_count == _TRUE_) {
     class_alloc(transfer_ic1_nc,psp->d_size*sizeof(double),psp->error_message);
     class_alloc(transfer_ic2_nc,psp->d_size*sizeof(double),psp->error_message);
-    class_alloc(transfer_ic1_den,psp->d_size*sizeof(double),psp->error_message);
-    class_alloc(transfer_ic1_len,psp->d_size*sizeof(double),psp->error_message);
-    class_alloc(transfer_ic2_den,psp->d_size*sizeof(double),psp->error_message);
-    class_alloc(transfer_ic2_len,psp->d_size*sizeof(double),psp->error_message);
   }
 
   for (index_q=0; index_q < ptr->q_size; index_q++) {
@@ -2479,8 +2471,6 @@ int spectra_compute_cl(
         if (ppt->has_nc_density == _TRUE_) {
           transfer_ic1_nc[index_d1] += transfer_ic1[ptr->index_tt_density+index_d1];
           transfer_ic2_nc[index_d1] += transfer_ic2[ptr->index_tt_density+index_d1];
-          transfer_ic1_den[index_d1] = transfer_ic1[ptr->index_tt_density+index_d1];
-          transfer_ic2_den[index_d1] = transfer_ic2[ptr->index_tt_density+index_d1];
         }
 
         if (ppt->has_nc_rsd     == _TRUE_) {
@@ -2495,8 +2485,6 @@ int spectra_compute_cl(
         }
 
         if (ppt->has_nc_lens == _TRUE_) {
-          transfer_ic1_len[index_d1] = psp->l[index_l]*(psp->l[index_l]+1.)*transfer_ic1[ptr->index_tt_nc_lens+index_d1];
-          transfer_ic2_len[index_d1] = psp->l[index_l]*(psp->l[index_l]+1.)*transfer_ic2[ptr->index_tt_nc_lens+index_d1];
           transfer_ic1_nc[index_d1] +=
             psp->l[index_l]*(psp->l[index_l]+1.)*transfer_ic1[ptr->index_tt_nc_lens+index_d1];
           transfer_ic2_nc[index_d1] +=
@@ -2620,7 +2608,9 @@ int spectra_compute_cl(
       for (index_d1=0; index_d1<psp->d_size; index_d1++) {
         for (index_d2=index_d1; index_d2<=MIN(index_d1+psp->non_diag,psp->d_size-1); index_d2++) {
           cl_integrand[index_q*cl_integrand_num_columns+1+psp->index_ct_dd+index_ct]=
-            primordial_pk[index_ic1_ic2] * transfer_ic1_den[index_d1] * transfer_ic2_len[index_d2]
+            primordial_pk[index_ic1_ic2]
+            * transfer_ic1_nc[index_d1]
+            * transfer_ic2_nc[index_d2]
             * factor;
           index_ct++;
         }
@@ -2778,10 +2768,6 @@ int spectra_compute_cl(
   if (ppt->has_cl_number_count == _TRUE_) {
     free(transfer_ic1_nc);
     free(transfer_ic2_nc);
-    free(transfer_ic1_den);
-    free(transfer_ic2_den);
-    free(transfer_ic1_len);
-    free(transfer_ic2_len);
   }
 
   return _SUCCESS_;

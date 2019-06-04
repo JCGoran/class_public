@@ -161,6 +161,8 @@ struct transfers {
 
   ErrorMsg error_message; /**< zone for writing error messages */
 
+  int has_uetc_den_lens;
+
   //@}
 };
 
