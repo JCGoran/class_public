@@ -2620,7 +2620,11 @@ int spectra_compute_cl(
       for (index_d1=0; index_d1<psp->d_size; index_d1++) {
         for (index_d2=index_d1; index_d2<=MIN(index_d1+psp->non_diag,psp->d_size-1); index_d2++) {
           cl_integrand[index_q*cl_integrand_num_columns+1+psp->index_ct_dd+index_ct]=
-            primordial_pk[index_ic1_ic2] * transfer_ic1_den[index_d1] * transfer_ic2_len[index_d2]
+            primordial_pk[index_ic1_ic2] * (
+                transfer_ic1_den[index_d1] * transfer_ic2_len[index_d2]
+                +
+                transfer_ic2_den[index_d2] * transfer_ic1_len[index_d1]
+            )
             * factor;
           index_ct++;
         }

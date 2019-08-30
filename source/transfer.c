@@ -2091,6 +2091,8 @@ int transfer_sources(
                      int * tau_size_out
                      )  {
 
+  const double uetc_rescaling = pba->h;
+
   /** Summary: */
 
   /** - define local variables */
@@ -2746,7 +2748,13 @@ int transfer_sources(
                     /sinKgen_source
                     * selection[index_tau_sources]
                     * w_trapz_lensing_sources[index_tau_sources]
-                    * exp(-(D1 - D1_variable) * (D1 - D1_variable) * ptr->k[index_md][index_q] * ptr->k[index_md][index_q] / 0.24 / 0.24);
+                    * exp(
+                        -(D1 - D1_variable) * (D1 - D1_variable) *
+                        ptr->k[index_md][index_q] * ptr->k[index_md][index_q] /
+                        /* we need the factors of h because CLASS uses 1/Mpc and not h/Mpc internally,
+                           while k_nl should always be given in h/Mpc */
+                        ptr->uetc_k_nl / ptr->uetc_k_nl / pba->h / pba->h
+                    );
                 }
 
                 if (_index_tt_in_range_(ptr->index_tt_nc_g4, ppt->selection_num, ppt->has_nc_gr)) {

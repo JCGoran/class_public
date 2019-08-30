@@ -2382,33 +2382,6 @@ int input_read_parameters(
     }
 
     class_call(parser_read_string(pfc,
-                                  "has_uetc_den_lens",
-                                  &(string1),
-                                  &(flag1),
-                                  errmsg),
-               errmsg,
-               errmsg);
-
-    if ((flag1 == _TRUE_)) {
-      if ((strstr(string1,"y") != NULL) || (strstr(string1,"Y") != NULL))
-        ptr->has_uetc_den_lens = _TRUE_;
-        class_call(parser_read_double(pfc,
-                              "uetc_k_nl",
-                              &param1,
-                              &flag1,
-                              errmsg),
-                   errmsg,
-                   errmsg);
-        if ((flag1 == _TRUE_)){
-            if (param1 < 100. && param1 > 0.)
-                ptr->uetc_k_nl = param1;
-            else{
-                class_stop(errmsg, "Invalid value for uetc_k_nl; got %e, expected value in the range [0, 100]\n", param1);
-            }
-        }
-    }
-
-    class_call(parser_read_string(pfc,
                                   "dNdz_evolution",
                                   &(string1),
                                   &(flag1),
@@ -2916,6 +2889,35 @@ int input_read_parameters(
                errmsg,
                errmsg);
   }
+
+    class_call(parser_read_string(pfc,
+                                  "has_uetc_den_lens",
+                                  &(string1),
+                                  &(flag1),
+                                  errmsg),
+               errmsg,
+               errmsg);
+
+    if ((flag1 == _TRUE_)) {
+      if ((strstr(string1,"y") != NULL) || (strstr(string1,"Y") != NULL)){
+        ptr->has_uetc_den_lens = _TRUE_;
+        class_call(parser_read_double(pfc,
+                              "uetc_k_nl",
+                              &param1,
+                              &flag1,
+                              errmsg),
+                   errmsg,
+                   errmsg);
+        if ((flag1 == _TRUE_)){
+            if (param1 < 100. && param1 > 0.){
+                ptr->uetc_k_nl = param1;
+            }
+            else{
+                class_stop(errmsg, "Invalid value for uetc_k_nl; got %e, expected value in the range [0, 100]\n", param1);
+            }
+        }
+      }
+    }
 
   return _SUCCESS_;
 
