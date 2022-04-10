@@ -17,12 +17,13 @@ vpath .base build
 ########################################################
 
 # your C compiler:
-CC       = gcc
+CC       ?= gcc
 #CC       = icc
 #CC       = pgcc
 
 # your tool for creating static libraries:
-AR        = ar rv
+AR        ?= ar
+ARFLAGS   ?= rv
 
 # Your python interpreter.
 # In order to use Python 3, you can manually
@@ -30,7 +31,7 @@ AR        = ar rv
 # add a compilation option on the terminal command line:
 # "PYTHON=python3 make all" (THanks to Marius Millea for pyhton3
 # compatibility)
-PYTHON ?= python
+PYTHON ?= python3
 
 # your optimization flag
 OPTFLAG = -O4 -ffast-math #-march=native
@@ -135,7 +136,7 @@ PYTHON_FILES = python/classy.pyx python/setup.py python/cclassy.pxd python/test_
 all: class libclass.a classy
 
 libclass.a: $(TOOLS) $(SOURCE) $(EXTERNAL)
-	$(AR)  $@ $(addprefix build/, $(TOOLS) $(SOURCE) $(EXTERNAL))
+	$(AR) $(ARFLAGS) $@ $(addprefix build/, $(TOOLS) $(SOURCE) $(EXTERNAL))
 
 class: $(TOOLS) $(SOURCE) $(EXTERNAL) $(OUTPUT) $(CLASS)
 	$(CC) $(OPTFLAG) $(OMPFLAG) $(LDFLAG) -o class $(addprefix build/,$(notdir $^)) -lm
