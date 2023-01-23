@@ -12,8 +12,13 @@ install_module(){
     then
         install_path="${CONDA_PREFIX}"
     else
-        printf 'No virtual env or conda env detected, aborting...\n'
-        return 1
+        # we hope that this exists
+        if stat "/usr/local" >/dev/null 2>&1
+        then
+            install_path="/usr/local"
+        else
+            install_path="/usr"
+        fi
     fi
     make libclass.a && cp -a libclass.a "${install_path}/lib/" && cp -a ./include/*.h "${install_path}/include/"
 }
