@@ -2,7 +2,7 @@
 
 # installation script for CLASS (inside of a virtual env or conda env)
 
-set -euxo
+set -eux
 
 install_module(){
     if [ -n "${VIRTUAL_ENV-}" ]
@@ -20,9 +20,11 @@ install_module(){
             install_path="/usr"
         fi
     fi
-    make libclass.a && cp -a libclass.a "${install_path}/lib/" && cp -a ./include/*.h "${install_path}/include/"
+    make libclass.a
+    cp -a libclass.a "${install_path}/lib/"
+    cp -a ./include/*.h "${install_path}/include/"
 }
 
 install_module
 
-set +euxo
+set +eux
