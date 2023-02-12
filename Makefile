@@ -44,7 +44,7 @@ OMPFLAG   = -fopenmp
 #OMPFLAG   = -openmp
 
 # all other compilation flags
-CCFLAG = -g -fPIC -lm
+CCFLAG = -g -fPIC -fno-tree-vectorize
 LDFLAG = -g -fPIC
 
 # leave blank to compile without HyRec, or put path to HyRec directory
