@@ -34,14 +34,20 @@ ARFLAGS   ?= rv
 PYTHON ?= python3
 
 # your optimization flag
-OPTFLAG = -O4 -ffast-math #-march=native
+OPTFLAG = -O3 -ffast-math #-march=native
 #OPTFLAG = -Ofast -ffast-math #-march=native
 #OPTFLAG = -fast
 
-# your openmp flag (comment for compiling without openmp)
-OMPFLAG   = -fopenmp
-#OMPFLAG   = -mp -mp=nonuma -mp=allcores -g
-#OMPFLAG   = -openmp
+# The openmp flag
+# Detect the compiler
+CC := $(shell $(CC) --version 2>&1 | grep -i clang > /dev/null && echo clang || echo gcc)
+
+# Set OpenMP flag based on the detected compiler
+ifeq ($(CC), clang)
+    OMPFLAG = ""
+else
+    OMPFLAG = -fopenmp
+endif
 
 # all other compilation flags
 CCFLAG = -g -fPIC -fno-tree-vectorize
